@@ -71,6 +71,12 @@
       "name": "Copy Code Button",
       "description": "Add a 'Copy' button to each code block for easy copying.",
       "status": "implemented"
+    },
+    {
+      "name": "Web Search Integration",
+      "description": "Perform web searches using Brave Search API when needed by the AI.",
+      "status": "implemented",
+      "notes": "Requires valid Brave Search API key; supports CORS directly from browser."
     }
   ],
   "security_considerations": [
@@ -83,7 +89,7 @@
     {
       "item": "Content Security Policy (CSP)",
       "description": "CSP headers restrict resource loading to trusted sources.",
-      "policy": "default-src 'self'; script-src 'self' https://pyscript.net https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://api.deepseek.com;"
+      "policy": "default-src 'self'; script-src 'self' https://pyscript.net https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://api.deepseek.com https://api.search.brave.com;"
     },
     {
       "item": "Input Sanitization",
