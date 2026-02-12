@@ -126,13 +126,24 @@
         }
 
         .api-key-section {
-            padding: 10px 20px;
+            padding: 15px 20px;
             background-color: var(--chat-bg);
             border-bottom: 1px solid var(--border-color);
             display: flex;
-            align-items: center;
+            flex-direction: column;
             gap: 10px;
             flex-shrink: 0;
+        }
+
+        .api-key-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .api-key-row label {
+            min-width: 160px;
         }
 
         .api-key-section input {
@@ -143,7 +154,7 @@
             background-color: var(--input-bg);
             color: var(--text-color);
             font-size: 0.9rem;
-            max-width: 400px;
+            max-width: 100%;
         }
 
         .api-key-section input:focus {
@@ -381,11 +392,15 @@
     </div>
 
     <div class="api-key-section">
-        <label for="apiKey" data-i18n="apiKeyLabel">DeepSeek API Key:</label>
-        <input type="password" id="apiKey" placeholder="Enter your DeepSeek API key" onchange="saveApiKey()">
-        <label for="braveApiKey" data-i18n="braveApiKeyLabel" style="margin-left: 10px;">Brave Search API Key (Optional):</label>
-        <input type="password" id="braveApiKey" placeholder="Enter your Brave Search API key" onchange="saveBraveApiKey()">
-        <button class="btn" onclick="saveKeys()" data-i18n="save">Save</button>
+        <div class="api-key-row">
+            <label for="apiKey" data-i18n="apiKeyLabel">DeepSeek API Key:</label>
+            <input type="password" id="apiKey" placeholder="Enter your DeepSeek API key" onchange="saveApiKey()">
+            <button class="btn" onclick="saveKeys()" data-i18n="save">Save</button>
+        </div>
+        <div class="api-key-row">
+            <label for="braveApiKey" data-i18n="braveApiKeyLabel">Brave Search API Key (Optional):</label>
+            <input type="password" id="braveApiKey" placeholder="Enter your Brave Search API key" onchange="saveBraveApiKey()">
+        </div>
     </div>
 
     <div class="chat-container" id="chatContainer"></div>
