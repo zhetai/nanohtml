@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Determine script location
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+VIDEO_DIR="$DIR"
+ROOT_DIR="$DIR/.."
+
+# Navigate to video directory
+cd "$VIDEO_DIR"
+
+if [ -z "$1" ]; then
+  echo "Usage: ./video/generate <type> [text]"
+  echo "Types: 3d, blend, t2v"
+  exit 1
+fi
+
+TYPE=$1
+TEXT=${2:-"Hello World"}
+
+case $TYPE in
+  "3d")
+    npx remotion render src/index.ts CameraFlyThrough out/3d.mp4
+    ;;
+  "blend")
+    npx remotion render src/index.ts BlendTransition out/blend.mp4
+    ;;
+  "t2v")
+    npx remotion render src/index.ts TextToVideo out/t2v.mp4 --props="{\"text\": \"$TEXT\"}"
+    ;;
+  *)
+    echo "Unknown type: $TYPE"
+    echo "Types: 3d, blend, t2v"
+    exit 1
+    ;;
+esac
+
+echo "Render complete: out/$TYPE.mp4"
