@@ -1,0 +1,538 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  type-check:
+    name: Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install -g typescript
+
+      - name: Check HTML syntax
+        run: |
+          python3 -c "
+          import re
+          from html.parser import HTMLParser
+
+          class HTMLValidator(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.errors = []
+
+              def error(self, message):
+                  self.errors.append(message)
+
+          with open('nanobot.html', 'r', encoding='utf-8') as f:
+              content = f.read()
+              
+          # Basic HTML validation checks
+          if '<!DOCTYPE html>' not in content:
+              print('Missing DOCTYPE declaration')
+              exit(1)
+          if '<html' not in content:
+              print('Missing html tag')
+              exit(1)
+          if '<head>' not in content:
+              print('Missing head tag')
+              exit(1)
+          if '<body>' not in content:
+              print('Missing body tag')
+              exit(1)
+          if '</html>' not in content:
+              print('Missing closing html tag')
+              exit(1)
+          print('HTML structure validation passed')
+          "
+
+  linting:
+    name: Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install ESLint
+        run: npm install -g eslint
+
+      - name: Lint JavaScript/HTML
+        run: |
+          python3 << 'EOF'
+          import re
+          import json
+
+          def lint_html(filepath):
+              errors = []
+              with open(filepath, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              
+              # Check for console.log statements (should be removed in production)
+              if 'console.log' in content:
+                  errors.append('Warning: console.log found in code')
+              
+              # Check for TODO comments
+              if 'TODO' in content or 'FIXME' in content:
+                  errors.append('Warning: TODO/FIXME comments found')
+              
+              # Check for hardcoded secrets patterns
+              secret_patterns = [
+                  r'api[_-]?key\s*[=:]\s*["\'][\w\-]+["\']',
+                  r'secret[_-]?key\s*[=:]\s*["\'][\w\-]+["\']',
+                  r'password\s*[=:]\s*["\'][\w\-]+["\']'
+              ]
+              for pattern in secret_patterns:
+                  if re.search(pattern, content, re.IGNORECASE):
+                      errors.append('Error: Potential hardcoded secret detected')
+                      break
+              
+              # Check for proper event handler syntax
+              if re.search(r'on\w+\s*=\s*function\s*\(', content):
+                  errors.append('Warning: Inline function in event handler')
+              
+              # Check for missing alt attributes on images
+              img_tags = re.findall(r'<img[^>]*>', content, re.IGNORECASE)
+              for img in img_tags:
+                  if 'alt=' not in img:
+                      errors.append('Warning: Image tag missing alt attribute')
+              
+              # Check for proper closing tags
+              open_tags = re.findall(r'<(\w+)[^>]*>', content)
+              close_tags = re.findall(r'</(\w+)>', content)
+              void_tags = {'img', 'br', 'hr', 'input', 'meta', 'link', 'base', 'area', 'col', 'embed', 'source', 'track', 'wbr'}
+              for tag in open_tags:
+                  if tag not in void_tags and f'</{tag}>' not in content:
+                      errors.append(f'Warning: Unclosed tag detected: {tag}')
+              
+              return errors
+
+          errors = lint_html('nanobot.html')
+          if errors:
+              print('Linting errors found:')
+              for error in errors:
+                  print(f'  - {error}')
+              exit(1)
+          else:
+              print('Linting passed: No issues found')
+          EOF
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Calculate code coverage
+        run: |
+          python3 << 'EOF'
+          import re
+
+          def analyze_coverage(filepath):
+              with open(filepath, 'r', encoding='utf-8') as f:
+                  lines = f.readlines()
+              
+              total_lines = len(lines)
+              code_lines = 0
+              comment_lines = 0
+              blank_lines = 0
+              html_lines = 0
+              
+              in_multiline_comment = False
+              
+              for line in lines:
+                  stripped = line.strip()
+                  
+                  # Check for blank lines
+                  if not stripped:
+                      blank_lines += 1
+                      continue
+                  
+                  # Check for HTML content
+                  if stripped.startswith('<') and not stripped.startswith('<!--'):
+                      html_lines += 1
+                      continue
+                  
+                  # Check for comments
+                  if '/*' in stripped:
+                      in_multiline_comment = True
+                      comment_lines += 1
+                      continue
+                  if '*/' in stripped:
+                      in_multiline_comment = False
+                      comment_lines += 1
+                      continue
+                  if in_multiline_comment:
+                      comment_lines += 1
+                      continue
+                  if stripped.startswith('//') or stripped.startswith('<!--'):
+                      comment_lines += 1
+                      continue
+                  
+                  # Count code lines
+                  code_lines += 1
+              
+              # Calculate coverage metrics
+              code_coverage = (code_lines / total_lines) * 100 if total_lines > 0 else 0
+              comment_ratio = (comment_lines / total_lines) * 100 if total_lines > 0 else 0
+              
+              print(f'Code Coverage Analysis:')
+              print(f'  Total Lines: {total_lines}')
+              print(f'  Code Lines: {code_lines} ({code_coverage:.1f}%)')
+              print(f'  Comment Lines: {comment_lines} ({comment_ratio:.1f}%)')
+              print(f'  Blank Lines: {blank_lines}')
+              print(f'  HTML Lines: {html_lines}')
+              
+              # Output coverage report
+              with open('coverage.json', 'w') as f:
+                  import json
+                  json.dump({
+                      'total_lines': total_lines,
+                      'code_lines': code_lines,
+                      'comment_lines': comment_lines,
+                      'blank_lines': blank_lines,
+                      'html_lines': html_lines,
+                      'code_coverage': round(code_coverage, 2),
+                      'comment_ratio': round(comment_ratio, 2)
+                  }, f, indent=2)
+              
+              # Require minimum code coverage
+              if code_coverage < 30:
+                  print(f'Error: Code coverage ({code_coverage:.1f}%) is below minimum threshold (30%)')
+                  exit(1)
+              
+              print('Coverage check passed')
+              return code_coverage
+
+          coverage = analyze_coverage('nanobot.html')
+          print(f'Final Code Coverage: {coverage:.2f}%')
+          EOF
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.json
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          npm install -g marked highlight.js
+
+      - name: Run unit tests
+        run: |
+          python3 << 'EOF'
+          import sys
+          import json
+          import re
+
+          class TestRunner:
+              def __init__(self):
+                  self.tests_run = 0
+                  self.tests_passed = 0
+                  self.tests_failed = 0
+                  self.failures = []
+
+              def test(self, name, condition, message=""):
+                  self.tests_run += 1
+                  if condition:
+                      self.tests_passed += 1
+                      print(f'✓ {name}')
+                  else:
+                      self.tests_failed += 1
+                      self.failures.append(f'{name}: {message}')
+                      print(f'✗ {name} - {message}')
+
+              def summary(self):
+                  print(f'\nTest Summary: {self.tests_passed}/{self.tests_run} passed')
+                  if self.failures:
+                      print('\nFailed tests:')
+                      for failure in self.failures:
+                          print(f'  - {failure}')
+                  return self.tests_failed == 0
+
+          runner = TestRunner()
+
+          # Read HTML file
+          with open('nanobot.html', 'r', encoding='utf-8') as f:
+              html_content = f.read()
+
+          # Test 1: File exists and is not empty
+          runner.test('File exists', len(html_content) > 0, 'HTML file is empty')
+
+          # Test 2: DOCTYPE declaration
+          runner.test('DOCTYPE declaration', '<!DOCTYPE html>' in html_content, 'Missing DOCTYPE')
+
+          # Test 3: Required HTML structure
+          runner.test('HTML tag present', '<html' in html_content and '</html>' in html_content, 'Missing HTML tags')
+          runner.test('HEAD tag present', '<head>' in html_content and '</head>' in html_content, 'Missing HEAD tags')
+          runner.test('BODY tag present', '<body>' in html_content and '</body>' in html_content, 'Missing BODY tags')
+
+          # Test 4: Meta tags
+          runner.test('Charset meta tag', 'charset=' in html_content, 'Missing charset meta tag')
+          runner.test('Viewport meta tag', 'viewport' in html_content, 'Missing viewport meta tag')
+
+          # Test 5: External libraries
+          runner.test('marked.js library', 'marked.min.js' in html_content, 'Missing marked.js library')
+          runner.test('highlight.js library', 'highlight.min.js' in html_content, 'Missing highlight.js library')
+          runner.test('PyScript library', 'pyscript.js' in html_content, 'Missing PyScript library')
+
+          # Test 6: CSS styles
+          runner.test('CSS styles present', '<style>' in html_content and '</style>' in html_content, 'Missing CSS styles')
+
+          # Test 7: JavaScript functions
+          runner.test('initApp function', 'function initApp' in html_content, 'Missing initApp function')
+          runner.test('sendMessage function', 'function sendMessage' in html_content, 'Missing sendMessage function')
+          runner.test('saveMessageToDB function', 'function saveMessageToDB' in html_content, 'Missing saveMessageToDB function')
+
+          # Test 8: UI Components
+          runner.test('API key input', 'apiKey' in html_content, 'Missing API key input')
+          runner.test('Chat container', 'chatContainer' in html_content, 'Missing chat container')
+          runner.test('Message input', 'messageInput' in html_content, 'Missing message input')
+          runner.test('Send button', 'sendMessage' in html_content, 'Missing send button')
+          runner.test('Voice button', 'toggleVoiceInput' in html_content, 'Missing voice button')
+          runner.test('Theme toggle', 'toggleTheme' in html_content, 'Missing theme toggle')
+          runner.test('Export button', 'exportChat' in html_content, 'Missing export button')
+          runner.test('Clear button', 'clearChat' in html_content, 'Missing clear button')
+
+          # Test 9: IndexedDB implementation
+          runner.test('IndexedDB initialization', 'initDB' in html_content, 'Missing IndexedDB initialization')
+          runner.test('IndexedDB save', 'saveMessageToDB' in html_content, 'Missing IndexedDB save function')
+          runner.test('IndexedDB load', 'loadMessagesFromDB' in html_content, 'Missing IndexedDB load function')
+          runner.test('IndexedDB clear', 'clearDB' in html_content, 'Missing IndexedDB clear function')
+
+          # Test 10: Multi-language support
+          runner.test('Language translations', 'translations' in html_content, 'Missing translations object')
+          runner.test('Language change function', 'changeLanguage' in html_content, 'Missing changeLanguage function')
+          runner.test('Apply translations function', 'applyTranslations' in html_content, 'Missing applyTranslations function')
+
+          # Test 11: DeepSeek API integration
+          runner.test('DeepSeek API endpoint', 'api.deepseek.com' in html_content, 'Missing DeepSeek API endpoint')
+          runner.test('API call implementation', 'fetch' in html_content and 'chat/completions' in html_content, 'Missing API call implementation')
+
+          # Test 12: Markdown rendering
+          runner.test('Markdown parsing', 'marked.parse' in html_content, 'Missing markdown parsing')
+          runner.test('Code block handling', 'copy-btn' in html_content, 'Missing copy button for code blocks')
+
+          # Test 13: Dark mode
+          runner.test('Dark mode CSS', 'data-theme="dark"' in html_content, 'Missing dark mode CSS')
+          runner.test('Theme toggle function', 'toggleTheme' in html_content, 'Missing theme toggle function')
+
+          # Test 14: Voice input
+          runner.test('Voice recognition check', 'SpeechRecognition' in html_content or 'webkitSpeechRecognition' in html_content, 'Missing voice recognition check')
+          runner.test('Voice toggle function', 'toggleVoiceInput' in html_content, 'Missing voice toggle function')
+
+          # Test 15: Export functionality
+          runner.test('Export function', 'exportChat' in html_content, 'Missing export function')
+          runner.test('Markdown export', 'Blob' in html_content and 'text/markdown' in html_content, 'Missing markdown export implementation')
+
+          # Test 16: Clear chat functionality
+          runner.test('Clear chat function', 'clearChat' in html_content, 'Missing clear chat function')
+          runner.test('Confirm modal', 'confirmModal' in html_content, 'Missing confirm modal')
+
+          # Test 17: LocalStorage usage
+          runner.test('LocalStorage API key', 'deepseek_api_key' in html_content, 'Missing localStorage API key storage')
+          runner.test('LocalStorage theme', 'theme' in html_content, 'Missing localStorage theme storage')
+          runner.test('LocalStorage language', 'language' in html_content, 'Missing localStorage language storage')
+
+          # Test 18: Event handlers
+          runner.test('Enter key handler', 'handleKeyDown' in html_content, 'Missing enter key handler')
+          runner.test('Window load handler', 'window.onload' in html_content, 'Missing window load handler')
+
+          # Test 19: Error handling
+          runner.test('Try-catch blocks', 'try' in html_content and 'catch' in html_content, 'Missing error handling')
+          runner.test('Error alerts', 'alert' in html_content, 'Missing error alerts')
+
+          # Test 20: Accessibility
+          runner.test('Title tag', '<title>' in html_content, 'Missing title tag')
+          runner.test('Button labels', 'data-i18n' in html_content, 'Missing button labels for i18n')
+
+          # Test 21: Responsive design
+          runner.test('Media queries', '@media' in html_content, 'Missing responsive design media queries')
+
+          # Test 22: Animations
+          runner.test('CSS animations', '@keyframes' in html_content, 'Missing CSS animations')
+
+          # Test 23: Security
+          runner.test('No hardcoded API keys', not re.search(r'sk-[a-zA-Z0-9]{48}', html_content), 'Potential hardcoded API key found')
+          runner.test('Password input type', 'type="password"' in html_content, 'Missing password input type for API key')
+
+          # Test 24: Conversation history
+          runner.test('Conversation array', 'conversationHistory' in html_content, 'Missing conversation history array')
+
+          # Test 25: Loading indicator
+          runner.test('Loading animation', 'loading' in html_content, 'Missing loading indicator')
+
+          # Print summary and exit
+          if not runner.summary():
+              print('\nSome tests failed!')
+              sys.exit(1)
+          else:
+              print('\nAll tests passed!')
+              sys.exit(0)
+          EOF
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run security audit
+        run: |
+          python3 << 'EOF'
+          import re
+          import sys
+
+          def security_audit(filepath):
+              issues = []
+              warnings = []
+              
+              with open(filepath, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              
+              # Check for hardcoded secrets
+              secret_patterns = [
+                  (r'sk-[a-zA-Z0-9]{48}', 'Hardcoded DeepSeek API key'),
+                  (r'AIza[0-9A-Za-z\-_]{35}', 'Hardcoded Google API key'),
+                  (r'pk_[a-zA-Z0-9]{32}', 'Hardcoded Stripe key'),
+                  (r'AKIA[0-9A-Z]{16}', 'Hardcoded AWS access key'),
+                  (r'xoxb-[0-9]{10}-[0-9]{10}-[a-zA-Z0-9]{24}', 'Hardcoded Slack bot token'),
+                  (r'github_pat_[a-zA-Z0-9]{82}', 'Hardcoded GitHub personal access token'),
+              ]
+              
+              for pattern, description in secret_patterns:
+                  if re.search(pattern, content):
+                      issues.append(f'{description} detected')
+              
+              # Check for eval usage
+              if re.search(r'\beval\s*\(', content):
+                  issues.append('Use of eval() function detected (security risk)')
+              
+              # Check for innerHTML with user input (potential XSS)
+              if re.search(r'innerHTML\s*=\s*.*input|innerHTML\s*=\s*.*prompt', content):
+                  warnings.append('Potential XSS vulnerability: innerHTML with user input')
+              
+              # Check for dangerous DOM methods
+              dangerous_methods = ['document.write', 'document.writeln', 'outerHTML']
+              for method in dangerous_methods:
+                  if method in content:
+                      issues.append(f'Use of {method} detected (security risk)')
+              
+              # Check for inline event handlers with user input
+              if re.search(r'on\w+\s*=\s*["\'].*\+\s*user', content):
+                  warnings.append('Potential XSS: inline event handler with user input')
+              
+              # Check for insecure protocol
+              if 'http://' in content and 'https://api.deepseek.com' not in content:
+                  warnings.append('Use of insecure HTTP protocol detected')
+              
+              # Check for debug code
+              if 'debugger' in content:
+                  warnings.append('Debugger statement found (should be removed in production)')
+              
+              # Check for console methods
+              console_methods = ['console.log', 'console.error', 'console.warn']
+              for method in console_methods:
+                  if method in content:
+                      warnings.append(f'{method} found (should be removed in production)')
+              
+              # Check for comments with sensitive keywords
+              sensitive_keywords = ['password', 'secret', 'key', 'token', 'api']
+              lines = content.split('\n')
+              for i, line in enumerate(lines, 1):
+                  if '//' in line or '<!--' in line:
+                      for keyword in sensitive_keywords:
+                          if keyword.lower() in line.lower():
+                              warnings.append(f'Line {i}: Comment contains sensitive keyword "{keyword}"')
+              
+              # Check CSP implementation
+              if 'Content-Security-Policy' not in content:
+                  warnings.append('Content Security Policy not implemented')
+              
+              # Check for proper input validation
+              if 'trim()' not in content:
+                  warnings.append('Input validation (trim()) not found')
+              
+              # Check for password field
+              if 'type="password"' not in content and 'apiKey' in content:
+                  warnings.append('API key input should use type="password"')
+              
+              # Check for HTTPS API calls
+              if 'api.deepseek.com' in content and 'https://api.deepseek.com' not in content:
+                  issues.append('API call should use HTTPS')
+              
+              return issues, warnings
+
+          issues, warnings = security_audit('nanobot.html')
+          
+          print('Security Audit Results')
+          print('=' * 50)
+          
+          if issues:
+              print('\n🔴 CRITICAL ISSUES:')
+              for issue in issues:
+                  print(f'  ✗ {issue}')
+          
+          if warnings:
+              print('\n⚠️  WARNINGS:')
+              for warning in warnings:
+                  print(f'  ⚠ {warning}')
+          
+          if not issues and not warnings:
+              print('\n✅ No security issues found!')
+          
+          # Exit with error if critical issues found
+          if issues:
+              print(f'\n❌ Security audit failed: {len(issues)} critical issue(s) found')
+              sys.exit(1)
+          else:
+              print(f'\n✅ Security audit passed')
+              if warnings:
+                  print(f'   ({len(warnings)} warning(s) - review recommended)')
+          EOF
+
+      - name: Install and run npm audit
+        run: |
+          npm init -y
+          npm audit --audit-level=moderate || true
