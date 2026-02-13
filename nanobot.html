@@ -406,7 +406,7 @@
     <div class="chat-container" id="chatContainer"></div>
 
     <div class="input-section">
-        <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)">
+        <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)" accept="*">
         <button class="btn btn-secondary btn-icon" onclick="document.getElementById('fileInput').click()" title="Upload File">
             +
         </button>
@@ -763,25 +763,47 @@
         function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
-            
+
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const content = e.target.result;
-                const input = document.getElementById('messageInput');
-                const fileName = file.name;
-                const fileExtension = fileName.split('.').pop();
-                
-                // Append file content to the input area
-                const prefix = input.value ? '\n\n' : '';
-                input.value += `${prefix}File: ${fileName}\n\`\`\`${fileExtension}\n${content}\n\`\`\``;
-                
-                // Reset file input so the same file can be selected again
-                event.target.value = '';
-                
-                // Focus the input
-                input.focus();
-            };
-            reader.readAsText(file);
+            
+            // Check if file is an image
+            if (file.type.startsWith('image/')) {
+                reader.onload = function(e) {
+                    const base64Content = e.target.result;
+                    const input = document.getElementById('messageInput');
+                    
+                    // For images, we append markdown image syntax with Data URI
+                    // Note: Large images might exceed token limits or slow down the browser
+                    // but this allows basic image "upload" into the conversation context
+                    // if the backend supports vision, or just for display.
+                    // Since DeepSeek API (v1) is text-only, this is mostly for display/reference
+                    // or if the user switches to a multimodal model later.
+                    
+                    const prefix = input.value ? '\n\n' : '';
+                    // Using markdown image syntax
+                    input.value += `${prefix}![${file.name}](${base64Content})`;
+                    
+                    // Reset file input
+                    event.target.value = '';
+                    input.focus();
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // Text file handling
+                reader.onload = function(e) {
+                    const content = e.target.result;
+                    const input = document.getElementById('messageInput');
+                    const fileName = file.name;
+                    const fileExtension = fileName.split('.').pop();
+                    
+                    const prefix = input.value ? '\n\n' : '';
+                    input.value += `${prefix}File: ${fileName}\n\`\`\`${fileExtension}\n${content}\n\`\`\``;
+                    
+                    event.target.value = '';
+                    input.focus();
+                };
+                reader.readAsText(file);
+            }
         }
 
         async function sendMessage() {
