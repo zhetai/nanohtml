@@ -738,11 +738,13 @@
                             const copyBtn = document.createElement('button');
                             copyBtn.className = 'copy-btn';
                             copyBtn.textContent = 'Copy';
-                            copyBtn.onclick = () => {
+                            copyBtn.onclick = (e) => {
                                 const code = pre.querySelector('code').textContent;
                                 navigator.clipboard.writeText(code);
                                 copyBtn.textContent = 'Copied!';
-                                setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+                                setTimeout(() => {
+                                    copyBtn.textContent = 'Copy';
+                                }, 2000);
                             };
                             pre.appendChild(copyBtn);
                         }
@@ -768,7 +770,7 @@
             
             // Check if file is an image
             if (file.type.startsWith('image/')) {
-                reader.onload = function(e) {
+                reader.onload = (e) => {
                     const base64Content = e.target.result;
                     const input = document.getElementById('messageInput');
                     
@@ -790,7 +792,7 @@
                 reader.readAsDataURL(file);
             } else {
                 // Text file handling
-                reader.onload = function(e) {
+                reader.onload = (e) => {
                     const content = e.target.result;
                     const input = document.getElementById('messageInput');
                     const fileName = file.name;
